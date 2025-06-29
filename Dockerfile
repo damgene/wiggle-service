@@ -3,21 +3,20 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including git for pip git+https installations
 RUN apt-get update && apt-get install -y \
     curl \
     gcc \
+    git \
     && rm -rf /var/lib/apt/lists/*
-
-# Copy wiggle-common first
-COPY ../wiggle-common /tmp/wiggle-common
-RUN pip install /tmp/wiggle-common
 
 # Copy application code
 COPY . .
 
-# Install requirements and the package
+# Install requirements (includes wiggle-common from GitHub)
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install the service package
 RUN pip install -e .
 
 # Create logs directory
