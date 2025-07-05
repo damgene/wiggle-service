@@ -15,7 +15,7 @@ class DatabaseConfig(BaseSettings):
     
     # MongoDB connection
     mongodb_url: str = Field(
-        default="mongodb://localhost:27017",
+        default=os.getenv("DATABASE_URL", "mongodb://localhost:27017"),
         description="MongoDB connection URL"
     )
     database_name: str = Field(
@@ -39,7 +39,7 @@ class RedisConfig(BaseSettings):
     """Redis configuration for caching and background tasks"""
     
     redis_url: str = Field(
-        default="redis://localhost:6379/0",
+        default=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
         description="Redis connection URL"
     )
     
@@ -90,7 +90,7 @@ class MonitoringConfig(BaseSettings):
     """Monitoring and logging configuration"""
     
     # Logging
-    log_level: str = Field(default="INFO")
+    log_level: str = Field(default=os.getenv("LOG_LEVEL", "INFO"))
     log_format: str = Field(default="json")
     
     # Metrics
