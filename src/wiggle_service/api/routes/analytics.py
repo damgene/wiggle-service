@@ -6,9 +6,10 @@ Analytics and reporting for opportunities and performance.
 
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Query, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Query, Depends, status
+from pydantic import BaseModel, Field
 import structlog
+from uuid import uuid4
 
 from wiggle_service.models import (
     OpportunityDocument,
@@ -49,6 +50,94 @@ class ExchangePairAnalytics(BaseModel):
     average_return: float
     max_return: float
     success_rate: float
+
+
+class AnalysisResultSubmission(BaseModel):
+    """Analysis result submission from wiggle-finder"""
+    analysis_id: str
+    analysis_type: str
+    tokens_analyzed: List[str]
+    exchanges_used: List[str]
+    total_opportunities_found: int = Field(default=0, ge=0)
+    total_tokens_with_opportunities: int = Field(default=0, ge=0)
+    best_opportunity_return: float = Field(default=0.0, ge=0)
+    average_opportunity_return: float = Field(default=0.0, ge=0)
+    analysis_duration_seconds: float = Field(gt=0)
+    api_calls_made: int = Field(default=0, ge=0)
+    errors_encountered: int = Field(default=0, ge=0)
+    opportunities_by_token: Dict[str, int] = Field(default_factory=dict)
+    opportunities_by_exchange_pair: Dict[str, int] = Field(default_factory=dict)
+    analysis_config: Dict[str, Any] = Field(default_factory=dict)
+    started_at: str = Field(description="ISO datetime string")
+    completed_at: str = Field(description="ISO datetime string")
+
+
+@router.post("/analysis-results", 
+             summary="Submit analysis results",
+             status_code=status.HTTP_201_CREATED)
+async def submit_analysis_result(
+    analysis_result: AnalysisResultSubmission,
+    db=Depends(get_database)
+):
+    """Submit analysis results from wiggle-finder for tracking and historical analysis"""
+    try:
+        # Parse datetime strings
+        started_at = datetime.fromisoformat(analysis_result.started_at.replace('Z', '+00:00'))
+        completed_at = datetime.fromisoformat(analysis_result.completed_at.replace('Z', '+00:00'))
+        
+        # Create database document
+        result_doc = AnalysisResultDocument(
+            analysis_id=analysis_result.analysis_id,
+            analysis_type=analysis_result.analysis_type,
+            tokens_analyzed=analysis_result.tokens_analyzed,
+            exchanges_used=analysis_result.exchanges_used,
+            total_opportunities_found=analysis_result.total_opportunities_found,
+            total_tokens_with_opportunities=analysis_result.total_tokens_with_opportunities,
+            best_opportunity_return=analysis_result.best_opportunity_return,
+            average_opportunity_return=analysis_result.average_opportunity_return,
+            analysis_duration_seconds=analysis_result.analysis_duration_seconds,
+            api_calls_made=analysis_result.api_calls_made,
+            errors_encountered=analysis_result.errors_encountered,
+            opportunities_by_token=analysis_result.opportunities_by_token,
+            opportunities_by_exchange_pair=analysis_result.opportunities_by_exchange_pair,
+            analysis_config=analysis_result.analysis_config,
+            started_at=started_at,
+            completed_at=completed_at,
+            created_at=datetime.now()
+        )
+        
+        # Save to database
+        await result_doc.insert()
+        
+        logger.info("Analysis result submitted successfully", 
+                   analysis_id=analysis_result.analysis_id,
+                   analysis_type=analysis_result.analysis_type,
+                   tokens_count=len(analysis_result.tokens_analyzed),
+                   opportunities_found=analysis_result.total_opportunities_found)
+        
+        return {
+            "status": "success",
+            "message": "Analysis result submitted successfully",
+            "analysis_id": analysis_result.analysis_id,
+            "document_id": str(result_doc.id)
+        }
+        
+    except ValueError as e:
+        logger.error("Invalid datetime format in analysis result", 
+                    analysis_id=analysis_result.analysis_id, 
+                    error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid datetime format: {str(e)}"
+        )
+    except Exception as e:
+        logger.error("Failed to submit analysis result", 
+                    analysis_id=analysis_result.analysis_id,
+                    error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to submit analysis result"
+        )
 
 
 @router.get("/overview", summary="Analytics overview")
