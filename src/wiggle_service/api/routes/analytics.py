@@ -107,7 +107,7 @@ async def submit_analysis_result(
         )
         
         # Save to database
-        await result_doc.insert()
+        await result_doc.save()
         
         logger.info("Analysis result submitted successfully", 
                    analysis_id=analysis_result.analysis_id,
